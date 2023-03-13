@@ -136,7 +136,7 @@ model = build_unet(input_shape)
 model.summary()
 model.compile(optimizer=tf.keras.optimizers.Adam(),
                   loss="mse",
-                  metrics="accuracy")
+                  metrics=["accuracy", "loss"])
 # es_callback = EarlyStopping(monitor='val_loss', patience=5)
 model.fit(X_train,y_train,epochs=350, batch_size=16, validation_data=(X_valid, y_valid), 
 	sample_weight=weights_train) #callbacks=es_callback, 
