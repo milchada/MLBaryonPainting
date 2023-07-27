@@ -19,34 +19,14 @@ def get(path, params=None):
 h = 0.6774 
 munit = 1e10*u.Msun/h
 
-def save_halo_cutouts(simname, snapnum, nmin=0, nmax=100):    
-    filenames = ['http://www.tng-project.org/api/%s/snapshots/%d/halos/%d/info.json' % (simname, snapnum, s) for s in range(nmin,nmax)]
-    M200c = np.array([get(filename)['Group_M_Crit200']*munit.value for filename in filenames])
-    print(len(M200c[M200c>1e14]))
-    files = (np.array(filenames)[M200c > 1e14]).tolist()
-    files = [f.replace('info.json', 'cutout.hdf5')for f in files] #.replace('-Dark','') --> this way its the FP file #
-    dfiles = [f.replace('300-1', '300-1-Dark') for f in files]
-    # print(files)
-
-    for file in files+dfiles:
-        if 'Dark' in file:
-            prefix='dmo'
-        else:
-            prefix='fp'
-        halonum = file.split('halos/')[1].split('/')[0]
-        filename = 'cutout_%s_%d_%s.hdf5' % (prefix, snapnum, halonum)
-        if not glob.glob(filename):    
-            halo = get(file)
-            with open(filename, 'wb') as f:
-                    f.write(halo.content)
-            print(halonum, 'done!')
-            del(halo, f)
-            gc.collect()
-
-if __name__ == "__main__":
-    for snapnum in snapnums:
-        save_halo_cutouts(simname, snapnum, 0, 400)
-
-def get_groupcat(simname, snapnum):
-    filename = 'http://www.tng-project.org/api/%s/files/groupcat-%d/' % (simname, snapnum)
+def save_halo_cutouts(simname, snapnum, halonum, outname=None):    
+   file = 'http://www.tng-project.org/api/%s/snapshots/%d/halos/%d/cutout.hdf5' % (simname, snapnum, halonum)
+   halo = get(file)
+   if outname:
+      with open(outname, 'wb') as f:
+         f.write(halo.content)
+         del(halo, f)
+         gc.collect()
+   else:
+      return halo
 
