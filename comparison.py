@@ -30,6 +30,8 @@ def renorm(arr, arrmin, arrmax, eps=0.1, log=True):
         ret[ret == -np.inf] = np.nan 
     else:
         ret = arr
+        arrmin = 10**arrmin 
+        arrmax = 10**arrmax
     ret -= arrmin #min(log10(Lx))
     ret += eps
     ret /= (arrmax-arrmin+eps) #max(log10(Lx))
@@ -48,7 +50,7 @@ def reconstruct(arr, arrmin, arrmax, eps=0.1, log=True):
 os.chdir(basePath)
  #these arrays are normalised so mean - 4sigma = 0, mean + 4sigma = 1
 
-def extract_model(modelname, fit=True, loss='mse', dmo=False):
+def extract_model(modelname, fit=True, loss='mse', dmo=False, maskrad=None, mask_inside=False):
     model = models.load_model(modelname, compile=False)
     model.compile(optimizer=tf.keras.optimizers.Adam(), loss='mse')
     # model.compile(optimizer=tf.keras.optimizers.Adam(), loss=loss)
@@ -68,6 +70,16 @@ def extract_model(modelname, fit=True, loss='mse', dmo=False):
             y_test = y[test]
             del(X, y); gc.collect()
         X_test[np.isnan(X_test)] = 0
+        if mask:
+            X, Y = np.meshgrid(np.arange(512), np.arange(512))
+            X -= 256
+            Y -= 256
+            d = np.sqrt(X**2 + Y**2)
+            mask = (d > maskrad)
+            if mask_inside:
+                mask = ~mask
+            for i in range(len(X_test)):
+                X_test[i][mask] = 0
         
         if 'mask' in modelname:
             mask_test = (X_test > 0).astype(int)
@@ -80,7 +92,7 @@ def extract_model(modelname, fit=True, loss='mse', dmo=False):
     else:
         return model
 
-def model_show(modelname, tmin = 0, ntest=6, xmin = 0, xmax=512, ret=True):
+def model_show(modelname, tmin = 0, ntest=6, xmin = 0, xmax=512, zscale=1):
     #plot output
     os.chdir(basePath)
     norm = modelname.split('loss_')[1].split('-')[0]
@@ -101,34 +113,31 @@ def model_show(modelname, tmin = 0, ntest=6, xmin = 0, xmax=512, ret=True):
         cmap = cm.viridis
         ymin, ymax = rhomin, rhomax
         ylab = r'g/cm$^2$'
-        if 'hot' in modelname:
-            ztix = (1e-4, 1e-3, 1e-2)
-        else:
-            ztix = ()
+        ztix = (1e-4, 1e-3, 1e-2)
         zcut = 10
     elif 'temp' in modelname:
         label = r'$T_X$'
         cmap = cm.afmhot
         ymin, ymax = ktmin, ktmax
         ylab = 'K'
-        if hot in modelname:
-            zcut = 10
-            ztix = (1e6, 1e7, 1e8)
-        else:
-            zcut = 1
-            ztix = (0.3, 0.6, 0.9)
+        zcut = 1
+        ztix = (2, 4, 6)
+    if 'nolog' in modelname:
+        log=False
+    else:
+        log=True
     x = X_test[tmin:tmin+ntest]
     yt = y_test[tmin:tmin+ntest]
     yp = y_pred[tmin:tmin+ntest,:,:,0]
-    err = (yt - yp/yt)
+    err = (yp - yt)/yt
     err[np.isinf(err)] = np.nan
     
     for arr in [x, yt, yp]:
         arr[np.isnan(arr)] = 0
 
     x = reconstruct(x, dmmin, dmmax) * u.g.to('Msun') #projected mass 
-    yt = reconstruct(yt, ymin, ymax) 
-    yp = reconstruct(yp, ymin, ymax)
+    yt = reconstruct(yt, ymin, ymax, log=log) 
+    yp = reconstruct(yp, ymin, ymax, log=log)
     
     edge = x[0,0,0]
     zmin = np.nanpercentile(yt[x>edge], zcut)
@@ -155,7 +164,7 @@ def model_show(modelname, tmin = 0, ntest=6, xmin = 0, xmax=512, ret=True):
         im1 = ax[0][i].imshow(x[i], cmap=cm.Greys, norm = xnorm)
         im2 = ax[1][i].imshow(yt[i], cmap=cmap, norm=norm)
         im3 = ax[2][i].imshow(yp[i], cmap=cmap, norm=norm)
-        im4 = ax[3][i].imshow(err[i], cmap=cm.RdBu_r, norm=colors.Normalize(-1,1))
+        im4 = ax[3][i].imshow(err[i], cmap=cm.RdBu_r, norm=colors.Normalize(-zscale,zscale))
 
     ax[0][0].set_ylabel('DM')
     ax[1][0].set_ylabel('%s True' % label)
@@ -187,14 +196,12 @@ def model_show(modelname, tmin = 0, ntest=6, xmin = 0, xmax=512, ret=True):
     fig.colorbar(im4, cax=cax4)
     cax2.set_yticks(ztix)
     cax3.set_yticks(ztix)
+    # cax4.set_yticks([-1, -0.5, 0, 0.5, 1])
     cax2.set_ylim(zmin, zmax)
     cax3.set_ylim(zmin, zmax)
     fig.savefig(modelname.split('.')[0]+'.png', dpi=192)
     del(x, yt, yp); gc.collect()
-    if ret:
-        return fig, ax
-    else:
-        plt.close()
+    plt.close()
 
 def compare_pixels(modelnames, ncols=3, yscale='linear'):
     nrows = int(len(modelnames)/ncols)
@@ -463,10 +470,7 @@ def err_vs_cluster_props(modelname, prop1 = 'Group_M_Crit200', prop2 = 'GroupBHM
         except:
             print(cat['snap'][i], cat['halo'][i], 'fail')
     ytrue [ytrue ==0] = np.nan
-    if errtype == 'mse':
-        err = mse(ytrue, ypred)
-    else:
-        
+    err = mse(ytrue, ypred)
 
     #groupcat must include only the test set
     #i guess it could also include validation set? Ask Michelle
@@ -494,7 +498,7 @@ def err_vs_cluster_props(modelname, prop1 = 'Group_M_Crit200', prop2 = 'GroupBHM
 def mse(yt, yp):
     tsum = np.nansum(np.nansum(yt, axis=-1), axis=-1)
     psum = np.nansum(np.nansum(yp, axis=-1), axis=-1)
-    err = np.sqrt(((tsum-psum)/tsum)**2)
+    err = np.sqrt(((tsum-psum))**2)
     return err #/len(tsum)
 
 def mpe(yt, yp):
@@ -534,21 +538,23 @@ def plot_errors(modelnames):
         if 'nolog' in modelname:
             ymin = 10**ymin
             ymax = 10**ymax
-        y_test = reconstruct(y_test, ymin, ymax, log=log)
-        y_pred = reconstruct(y_pred, ymin, ymax, log=log)
+        y_test = reconstruct(y_test, ymin, ymax)
+        y_pred = reconstruct(y_pred, ymin, ymax)
         print('reconstruct done')
         err_mse = mse(y_test, y_pred) * 100 #to %
-        # err_mpe = mpe(y_test, y_pred) * 100
-        # err_mape = mape(y_test, y_pred) * 100
-        for err in [err_mse]: #[err_mpe, err_mape, err_mse]: 
+        err_mpe = mpe(y_test, y_pred) * 100
+        err_mape = mape(y_test, y_pred) * 100
+        for err in [err_mse, err_mpe, err_mape]:#, err_mse]: 
             err[np.isinf(err)] = np.nan
             emax = np.nanpercentile(err, 90)
             err[err > emax] = emax
         # ax[1][0].hist(err_mpe, bins=100, histtype='step')
         # ax[1][1].hist(err_mape, bins=100,  histtype='step')
-        print(modelname, 'mean MSE: ', np.nanmean(err_mse), 'median MSE: ',np.nanmedian(err_mse))
+        # print(modelname, 'mean MSE: ', np.nanmean(err_mse), 'median MSE: ',np.nanmedian(err_mse))
+        print(modelname, 'mean MPE: ', np.nanmean(err_mpe), 'median MPE: ',np.nanmedian(err_mpe))
+        print(modelname, 'mean MAPE: ', np.nanmean(err_mape), 'median MAPE: ',np.nanmedian(err_mape))
 
-    # ax[0][0].legend()
+"Print the MPE rather than MAPE, because that way positive and negative errors cancel out"    # ax[0][0].legend()
     
     # return fig, ax
 

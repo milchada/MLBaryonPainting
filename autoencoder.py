@@ -1,16 +1,16 @@
+
 #code based on: https://github.com/bnsreenu/python_for_microscopists/blob/master/090a-autoencoder_colorize_V0.2.py
 
-from keras.layers import Conv2D, BatchNormalization, Activation, MaxPool2D, Conv2DTranspose, Concatenate, Input, LeakyReLU, Multiply
+from keras.layers import Conv2D, BatchNormalization, Activation, MaxPool2D, Conv2DTranspose, Concatenate, Input, Multiply
 from keras.models import Model
 from keras.preprocessing.image import ImageDataGenerator, image_utils
 from keras.callbacks import EarlyStopping
 import numpy as np
 import gc
 import tensorflow as tf
-from keras.callbacks import ModelCheckpoint
 
-X = np.expand_dims(np.load('dm-normed-4sigma.npy'), -1)
-outfile = 'rho-normed-4sigma.npy' #temp, lx
+X = np.expand_dims(np.load('dm-normed-minmax.npy'), -1)
+outfile = 'temp-normed-minmax.npy' #temp
 y = np.expand_dims(np.load(outfile), -1)
 
 if 'minmax' in outfile:
@@ -18,11 +18,10 @@ if 'minmax' in outfile:
 if 'sigma' in outfile:
     activation = 'linear'
 
-# eps = 0.001
-X[np.isnan(X)] = 0  #can't have NaN in image during training
+X[np.isnan(X)] = 0 #throws out <0.2% of non-0 points; can't have NaN in image during training
 y[np.isnan(y)] = 0
-# X[X < 0] = 0 #this only drops 0.05% of valid pixels
-# y[y<0] = 0   #drops 0.2% of valid pixels
+X[X<0] = 0
+y[y<0] = 0
 
 #80/10/10 training/validate/test split
 seed = np.random.RandomState(42) #this way it'll always be the same clusters 
@@ -45,11 +44,11 @@ def conv_block(input, num_filters):
     x = Conv2D(num_filters, 3, padding="same")(input)
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
-    #x = LeakyReLU()(x)
+
     x = Conv2D(num_filters, 3, padding="same")(x)
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
-    #x = LeakyReLU()(x)
+
     return x
 
 def encoder_block(input, num_filters):
@@ -63,8 +62,8 @@ def decoder_block(input, skip_features, num_filters):
     x = conv_block(x, num_filters)
     return x
 
-def build_unet(input_shape, output_channels=1, activation = activation):
-    # inputs = Input(input_shape)
+def build_unet(input_shape, output_channels=1, activation=activation):
+#    inputs = Input(input_shape)
     input1 = Input(shape=input_shape, name='image_input')
     input2 = Input(shape=input_shape, name='masks')
     
@@ -72,27 +71,34 @@ def build_unet(input_shape, output_channels=1, activation = activation):
     s2, p2 = encoder_block(p1, 128)
     s3, p3 = encoder_block(p2, 256)
     s4, p4 = encoder_block(p3, 512)
+
     b1 = conv_block(p4, 1024)
+
     d1 = decoder_block(b1, s4, 512)
     d2 = decoder_block(d1, s3, 256)
     d3 = decoder_block(d2, s2, 128)
     d4 = decoder_block(d3, s1, 64)
-    # outputs = Conv2D(output_channels, 1, padding="same", activation=activation)(d4) 
-    # model = Model(inputs, outputs, name="U-Net")
-    foo = Conv2D(output_channels, 1, padding="same", activation=activation)(d4) 
+
+    #outputs = Conv2D(output_channels, 1, padding="same", activation="linear")(d4)
+    #model = Model(inputs, outputs, name="U-Net")
+    
+    foo = Conv2D(output_channels, 1, padding="same", activation=activation)(d4)
     outputs = Multiply()([input2, foo])
     model = Model([input1, input2], outputs, name="U-Net")
+
     return model
 
-filepath = "mass_in_%s_out_kld_loss.h5" % outfile.split('-')[0]
-# filepath = modelnames[1].replace('model','h5')
+from keras.callbacks import ModelCheckpoint
+
+filepath = "mass_in_%s_out_mse-loss_%s-norm-mask.h5" % (outfile.split('-normed')[0], outfile.split('-')[-1].split('.')[0])
+
 checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 callbacks_list = [checkpoint]
 
 model = build_unet(input_shape, nchanels)
 # model.summary()
 
-def tot_loss(yt, yp): #i want to minimise MSE but also KLD
+def loss(yt, yp): #i want to minimise MSE but also KLD
     mse = tf.keras.losses.MeanSquaredError()
     kl = tf.keras.losses.KLDivergence()
     loss = mse(yt, yp)+abs(kl(yt, yp)) #KLD is asymmetric; try switching yp and yt
@@ -100,13 +106,13 @@ def tot_loss(yt, yp): #i want to minimise MSE but also KLD
     return loss
 
 model.compile(optimizer=tf.keras.optimizers.Adam(),
-                  loss=tot_loss) #loss_weights = weights, #loss = 'mse')
-
+                  loss='mse', #loss_weights = weights, #loss = 'mse'
+                  metrics=["accuracy"])
 mask_train = (X_train > 0).astype(int)
 mask_valid = (X_valid > 0).astype(int)
 
-history = model.fit([X_train, mask_train],y_train,epochs=100, batch_size=8, validation_data=([X_valid, mask_valid], y_valid), #so data is all in [0,1]
-        callbacks=callbacks_list)                                                        #and it doesn't mess with activation functions
+history = model.fit([X_train,mask_train],y_train,epochs=100, batch_size=8, validation_data=([X_valid,mask_valid], y_valid), 
+        callbacks=callbacks_list)#, sample_weight = weights)
 
 model.save(filepath.replace('h5','model'))
 
@@ -114,8 +120,3 @@ import pickle
 with open(filepath.replace('h5', 'history'), 'wb') as f:
     pickle.dump(history.history, f)
 
-'''
-So in fact for VAEs, the loss function is defined as mse + kld
-but these two have very different normalisations, so weighting them is a problem
-see this thread: https://stats.stackexchange.com/questions/332179/how-to-weight-kld-loss-vs-reconstruction-loss-in-variational-auto-encoder
-define a new loss function accordingly

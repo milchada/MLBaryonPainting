@@ -155,7 +155,7 @@ def fp_vs_dm():
 		pred_function, pred_bins, pred_err, mdm_function, mdbins, merr = compute_dir(prop[0], norm=prop[1], mask='-mask', dmo='dmo')
 		pred_err[np.isnan(pred_err)] = 0
 		color = 'tab:orange'
-		ax[i].plot(pred_bins, pred_function, color=, label=r'$M_{DM}$ from DMO', linestyle='dotted')
+		ax[i].plot(pred_bins, pred_function, color=color, label=r'$M_{DM}$ from DMO', linestyle='dotted')
 		ax[i].fill_between(pred_bins, pred_function*(1-pred_err), pred_function*(1+pred_err), color=color, alpha=0.25)
 	
 	plt.yscale('log')
