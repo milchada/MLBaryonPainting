@@ -57,7 +57,15 @@ def extract_model(modelname, fit=True, loss='mse', dmo=False, maskrad=None, mask
     if fit:
         normd = modelname.split('loss_')[1].split('-')[0]
         quantity = modelname.split('in_')[1].split('_out')[0]
-        y = np.load('%s-normed-%s.npy' % (quantity, normd))
+        if quantity == 'all':
+            x = np.load('rho-normed-%s.npy' % normd)
+            y = np.zeros((x.shape[0], x.shape[1], x.shape[2], 3))
+            y[:,:,:,0] = np.load('rho-normed-%s.npy' % normd)
+            y[:,:,:,1] = np.load('temp-normed-%s.npy' % normd)
+            y[:,:,:,2] = np.load('lx-normed-%s.npy' % normd)
+            del(x)
+        else:
+            y = np.load('%s-normed-%s.npy' % (quantity, normd))
         if dmo:
             X_test = np.load('../%s/dm-normed-%s.npy' % (dmo, normd))
             y_test = y
@@ -70,7 +78,7 @@ def extract_model(modelname, fit=True, loss='mse', dmo=False, maskrad=None, mask
             y_test = y[test]
             del(X, y); gc.collect()
         X_test[np.isnan(X_test)] = 0
-        if mask:
+        if maskrad:
             X, Y = np.meshgrid(np.arange(512), np.arange(512))
             X -= 256
             Y -= 256
@@ -216,29 +224,31 @@ def compare_pixels(modelnames, ncols=3, yscale='linear'):
             prop = r'$T_{g, \rm linear}$'
         if 'temp_out' in modelname:
             prop = r'$T_g$'
-        if 'kld' in modelname:
-            err = 'MSE+KLD'
-        else:
-            err = 'MSE'
+        err = 'MSE'
         if 'minmax' in modelname:
             nrm = 'min-max'
         else:
             nrm = r'$4-\sigma$'
-        label = prop+','+err+','+nrm
-        if 'kld' in modelname:
-            X_test, y_test, y_pred = extract_model(modelname, loss='kld')
+        if 'mask' in modelname:
+            label = prop+','+nrm+'+mask'
         else:
-            X_test, y_test, y_pred = extract_model(modelname)
+            label = prop+','+nrm
+        X_test, y_test, y_pred = extract_model(modelname)
         y_test[y_test == 0] = np.nan
         y_pred[y_pred == 0] = np.nan
         ax.flatten()[i].hist(y_test.flatten(), range=(np.nanmin(y_test),np.nanmax(y_test)), bins=1000, label='True', histtype='step', linewidth=2)
         ax.flatten()[i].hist(y_pred.flatten(), range=(np.nanmin(y_test),np.nanmax(y_test)), bins=1000, label='Pred', histtype='step', linestyle = 'dotted', linewidth=2)
-        ax.flatten()[i].set_xlabel(label)
+        ax.flatten()[i].set_xlabel(label, fontsize=14)
         i += 1
     plt.legend()
     plt.yscale(yscale)
+    for a in ax[-1]:
+        xla = a.get_xticklabels()
+        a.set_xticklabels(xla, fontsize=14)
     plt.xlim(0,1)
-    plt.yticks([5e4, 1e5, 1.5e5, 2e5], [5, 10, 15, 20])
+    for a in ax[:,0]:
+        a.set_yticks([5e4, 1e5, 1.5e5, 2e5])
+        a.set_yticklabels([5, 10, 15, 20], fontsize=14)
     plt.tight_layout()
     return fig, ax
 
@@ -554,7 +564,98 @@ def plot_errors(modelnames):
         print(modelname, 'mean MPE: ', np.nanmean(err_mpe), 'median MPE: ',np.nanmedian(err_mpe))
         print(modelname, 'mean MAPE: ', np.nanmean(err_mape), 'median MAPE: ',np.nanmedian(err_mape))
 
-"Print the MPE rather than MAPE, because that way positive and negative errors cancel out"    # ax[0][0].legend()
-    
-    # return fig, ax
+def radial_profile(image):
+    lenx = len(image)
+    center = lenx/2
+    X, Y = np.meshgrid(np.arange(lenx), np.arange(lenx))
+    X = X.astype(float) - center
+    Y = Y.astype(float) - center
+    dx = 4000/512. #kpc
+    r = np.sqrt(X**2 + Y**2) * dx 
+    rbin = np.arange(0, 1001, 10) #in kpc 
+    profile = np.zeros(len(rbin) - 1)
+    for i in range(len(profile)):
+        rmin = rbin[i]
+        rmax = rbin[1+i]
+        mask = (r > rmin)*(r < rmax)
+        profile[i] = np.nanmean(image[mask])
+    return profile
 
+def compare_profiles(modelname, interquartile=False):
+    X_test, y_test, y_pred = extract_model(modelname)
+    prop = modelname.split('in_')[1].split('_out')[0]
+    norm = modelname.split('loss_')[1].split('-norm')[0]
+    lxmin, lxmax, rhomin, rhomax, tmin, tmax, dmmin, dmmax = df[norm]
+    if prop == 'lx':
+        ymin, ymax = lxmin, lxmax
+    if prop == 'rho':
+        ymin, ymax = rhomin, rhomax
+    if 'temp' in prop:
+        ymin, ymax = tmin, tmax
+    y_test = reconstruct(y_test, ymin, ymax)
+    y_pred = reconstruct(y_pred, ymin, ymax)
+    X_test = reconstruct(X_test, dmmin, dmmax)
+    rbins = np.arange(0, 1001, 10)
+    profile_true = np.zeros((len(y_test), len(rbins)-1))
+    profile_pred = np.zeros((len(y_test), len(rbins)-1))
+    for i in range(len(y_test)):
+        profile_true[i] = radial_profile(y_test[i])
+        profile_pred[i] = radial_profile(y_pred[i])
+    median_true = np.zeros(profile_true.shape[1])
+    min_true = np.zeros(profile_true.shape[1])
+    max_true = np.zeros(profile_true.shape[1])
+    median_pred = np.zeros(profile_true.shape[1])
+    min_pred = np.zeros(profile_true.shape[1])
+    max_pred = np.zeros(profile_true.shape[1])
+    
+    for i in range(len(median_true)):
+            median_true = np.nanmedian(profile_true, axis=0)
+            median_pred = np.nanmedian(profile_pred, axis=0)
+            if interquartile:
+                min_true = np.nanpercentile(profile_true, 25, axis=0)
+                max_true = np.nanpercentile(profile_true, 75, axis=0)
+                min_pred = np.nanpercentile(profile_pred, 25, axis=0)
+                max_pred = np.nanpercentile(profile_pred, 75, axis=0)
+            else:
+                min_true = np.nanmin(profile_true, axis=0)
+                max_true = np.nanmax(profile_true, axis=0)
+                min_pred = np.nanmin(profile_pred, axis=0)
+                max_pred = np.nanmax(profile_pred, axis=0)
+    return median_true, min_true, max_true, median_pred, min_pred, max_pred
+
+def plot_profile(modelname, ax, interquartile = False, ymin=1e-8, ymax=0.1, ylabel=r'$\Sigma_X$ (erg/cm$^2$/s)'):
+    rbins = np.arange(0, 1001, 10)
+    median_true, min_true, max_true, median_pred, min_pred, max_pred = compare_profiles(modelname, interquartile=interquartile)    
+    ax.plot(rbins[:-1], median_true, color='k', label='True')
+    ax.plot(rbins[:-1], median_pred, color='tab:blue', label='Pred')
+    ax.fill_between(rbins[:-1], min_true, max_true, color='k',alpha=0.1)
+    ax.fill_between(rbins[:-1], min_pred, max_pred, color='tab:blue',alpha=0.1)
+    ax.set_xlabel('R (kpc)')
+    ax.set_ylabel(ylabel)
+    ax.set_ylim(ymin, ymax)
+    plt.xlim(1, 1000)
+    plt.xscale('log')
+    if 'temp' in modelname:
+        if not interquartile:
+            ax.set_title('Median + min-max range')
+        else:
+            ax.set_title('Median + interquartile range')
+    else:
+        ax.set_yscale('log')
+    return fig, ax
+
+def plot_all_profiles():
+    fig, ax = plt.subplots(nrows = 2, ncols = 3, sharex=True, sharey=False)
+    modelnames = ['mass_in_rho_out_mse-loss_4sigma-norm-mask.h5',
+                'mass_in_temp_out_mse-loss_minmax-norm-mask.h5',
+                'mass_in_lx_out_mse-loss_minmax-norm-mask.h5']
+    plot_profile(modelnames[0], ax[0,0], ymin=1e-5, ymax=1, ylabel=r'$N_g$ (g/cm$^2$)')
+    plot_profile(modelnames[0], ax[1,0], interquartile=True, ymin=1e-5, ymax=1, ylabel=r'$N_g$ (g/cm$^2$)')
+    plot_profile(modelnames[1], ax[0,1], ymin=1, ymax=12, ylabel=r'$T_X$ (keV)')
+    plot_profile(modelnames[1], ax[1,1], interquartile=True, ymin=1, ymax=12, ylabel=r'$T_X$ (keV)')
+    plot_profile(modelnames[2], ax[0,2], ymin=1e-8, ymax=1, ylabel=r'$\Sigma_X$ (erg/cm$^2$/s)')
+    plot_profile(modelnames[2], ax[1,2], interquartile=True, ymin=1e-8, ymax=1, ylabel=r'$\Sigma_X$ (erg/cm$^2$/s)')
+    plt.legend()
+    plt.tight_layout()
+    fig.savefig('profiles.png', dpi=192)
+    return fig, ax
