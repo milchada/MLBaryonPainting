@@ -78,22 +78,3 @@ def make_proj(filename, snapnum, halonum, dm=True, gas=True, ns=["x","y","z"], s
             del(p)
             gc.collect()
 
-def compile_training_data():
-   import glob
-   fdm = glob.glob('dm_Mass_*npy'); dm.sort() 
-   fgas = [d.replace('dm_Mass','gas_Density') for d in dm]
-   ftemp = [d.replace('dm_Mass','gas_Temperature') for d in dm]
-   fbh = [d.replace('dm_Mass','bh_Mdot') for d in dm]
-   dm = np.zeros((len(dm), 512, 512, 1))
-   bh = np.zeros((len(dm), 512, 512, 1))
-   temp = np.zeros((len(dm), 512, 512, 1))
-   gas = np.zeros((len(dm), 512, 512, 1))
-   for i in range(len(inputs)):
-       dm[i, :,:,0] = np.load(fdm[i])
-       bh[i, :,:,0] = np.load(fbh[i])
-       temp[i, :,:,0] = np.load(ftemp[i])
-       gas[i, :,:,0] = np.load(fgas[i])
-   np.save('dm.npy', dm)
-   np.save('bh.npy', bh)
-   np.save('temp.npy', temp)
-   np.save('rho.npy', rho)
