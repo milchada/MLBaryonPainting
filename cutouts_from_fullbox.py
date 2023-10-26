@@ -47,71 +47,51 @@ def cutout(bar_path, fields, snap, halo_id):
             h.attrs["NumFilesPerSnapshot"] = 1
             f.close()
 
+def make_proj(filename, snapnum, halonum, dm=True, gas=True, ns=["x","y","z"], suffix=''):
+   ds = yt.load(filename)
+   try:
+      _, c = ds.find_min(("PartType5","Potential"))
+   except:
+      c = 'c'
+   for n in ns:
+      if gas:
+         if not glob.glob('gas_sb_proj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix)):
+            xray_fields = yt.add_xray_emissivity_field(ds, 0.3, 7, table_type='apec', metallicity=0.3)
+            p = yt.FITSProjection(ds, n, ("gas","xray_photon_emissivity_0.3_7_keV"), center=c, width=(8, "Mpc"))
+            p.writeto('gas_sb_proj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix), overwrite=True)
+            del(p)
+            gc.collect()
+         if not glob.glob('gas_kT_proj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix)):
+            p = yt.FITSProjection(ds, n, ("gas","kT"), center=c, width=(8, "Mpc"), weight_field="mazzotta_weighting")
+            p.writeto('gas_kT_proj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix), overwrite=True)
+            del(p)
+            gc.collect()
+         if not glob.glob('bh_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix)):
+            p = yt.FITSParticleProjection(ds, n, ('PartType5', 'BH_Mdot'), center=c, width=(8, "Mpc"), deposition="cic")
+            p.writeto('bh_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix), overwrite=True)
+            del(p)
+            gc.collect()
+      if dm:
+         if not glob.glob('dm_massproj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix)):
+            p = yt.FITSParticleProjection(ds, n, ("PartType1","particle_mass"), center=c, width=(8, "Mpc"), deposition="cic")
+            p.writeto('dm_massproj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix), overwrite=True)
+            del(p)
+            gc.collect()
+         
+   #now select only those that are valid in all fields, right?
+   allmask = (np.sum(dmmass, axis = 1) > 0) * (np.sum(dmvel, axis = 1) > 0) * (np.sum(sb, axis = 1) > 0) 
+            * (np.sum(kt, axis = 1) > 0) * (np.sum(bh, axis = 1) > 0)
+   dmmass = dmmass[allmask]
+   dmvel  = dmvel[allmask]
+   sb     = sb[allmask]
+   kt     = kt[allmask]
+   bh     = bh[allmask]
 
-def projection(pos, weight, cmin, cmax, type, fieldname, snap,halo, nbins=512, prefix=''):   
-   hist, _, _ = np.histogram2d(pos[:,1], pos[:,2], weights=weight, range=((cmin[1], cmax[1]),(cmin[2],cmax[2])),  bins=nbins)
-   np.save('%s%s_%s_%d_%d_x.npy' % (prefix, type, fieldname, snap, halo), hist)
-   print('x done')
-   hist, _, _ = np.histogram2d(pos[:,2], pos[:,0], weights=weight, range=((cmin[2], cmax[2]),(cmin[0],cmax[0])),  bins=nbins)
-   np.save('%s%s_%s_%d_%d_y.npy' % (prefix, type, fieldname,snap, halo), hist)
-   del(hist); gc.collect()
-   print('y done')
-   hist, _, _ = np.histogram2d(pos[:,0], pos[:,1], weights=weight, range=((cmin[0], cmax[0]),(cmin[1],cmax[1])),  bins=nbins)
-   np.save('%s%s_%s_%d_%d_z.npy' % (prefix, type, fieldname, snap, halo), hist)
-   del(hist); gc.collect()
-   print('z done')
-
-def temp_K(Eint, xe):
-   #reference: https://www.tng-project.org/data/docs/faq/#gen6
-   gamma = 5./3
-   X_H = 0.76
-   from astropy.constants import k_B, m_p
-   kB = k_B.to('keV/K').value
-   mu = 4/(1 + 3*X_H + 4*X_H*xe) * m_p.to('g').value
-   return (gamma - 1) * Eint * 1e10 * mu / kB  
-
-def get_fp_cutouts(todo):
-   basePath = '/n/holystore01/LABS/hernquist_lab/Lab/IllustrisTNG/Runs/L205n2500TNG/output/'
-   for i in todo.index:
-      snap = todo['snap'][i]
-      halo = todo['halo'][i]
-      dm = il.snapshot.loadHalo(basePath,int(snap), int(halo),'dm', fields=['Coordinates', 'Potential'])
-      gas = il.snapshot.loadHalo(basePath,int(snap), int(halo),'gas', fields=['Coordinates','Density','InternalEnergy','ElectronAbundance'])
-      # bh = il.snapshot.loadHalo(basePath,int(snap), int(halo),'bh', fields = ['Coordinates', 'BH_Mdot'])
-      print("Loaded")
-      pos = dm['Coordinates']
-      c = pos[np.argmin(dm['Potential'])]
-      cmin = c-4000
-      cmax = c+4000      
-      # projection(pos, weight=None, cmin=cmin, cmax=cmax, type='dm', fieldname='Mass', snap=snap,halo=halo, nbins=512)
-
-      temp = temp_K(gas['InternalEnergy'], gas['ElectronAbundance'])
-      projection(pos=gas['Coordinates'], weight=temp, cmin=cmin, cmax=cmax, type='gas', fieldname='Temperature', snap=snap,halo=halo, nbins=512)
-      # projection(pos=gas['Coordinates'], weight=gas['Density'], cmin=cmin, cmax=cmax, type='gas', fieldname='Density', snap=snap,halo=halo, nbins=512)
-      # projection(pos=bh['Coordinates'], weight=bh['BH_Mdot'], cmin=cmin, cmax=cmax, type='bh', fieldname='Mdot', snap=snap,halo=halo, nbins=512)
-
-      # del(gas, dm, bh, temp, pos)
-      del(dm, temp, pos)
-      gc.collect()
-      print(snap, halo, type, 'done')
-
-def fp_dm_cutouts(match):
-   fpPath = '/n/holystore01/LABS/hernquist_lab/Lab/IllustrisTNG/Runs/L205n2500TNG/output/'
-   dmPath = '/n/holystore01/LABS/hernquist_lab/Lab/IllustrisTNG/Runs/L205n2500TNG_DM/output/'
-   for row in match:
-      snap, fpind, dmind = row.astype(int)
-      fp = il.snapshot.loadHalo(fpPath, snap, fpind,'dm', fields=['Coordinates', 'Potential'])
-      dm = il.snapshot.loadHalo(dmPath, snap, dmind,'dm', fields=['Coordinates', 'Potential'])
-      pos = dm['Coordinates']
-      c = pos[np.argmin(dm['Potential'])]
-      cmin = c-4000
-      cmax = c+4000
-      projection(pos, weight=None, cmin=cmin, cmax=cmax, type='dm', fieldname='Mass', snap=snap,halo=fpind, nbins=512, prefix='dmo_')
-      pos = fp['Coordinates']
-      c = pos[np.argmin(fp['Potential'])]
-      cmin = c-4000
-      cmax = c+4000
-      projection(pos, weight=None, cmin=cmin, cmax=cmax, type='dm', fieldname='Mass', snap=snap,halo=fpind, nbins=512, prefix='fp_')
+   np.save('dmmass.npy', dmmass)
+   np.save('dmvel.npy', dmvel)
+   np.save('sb.npy', sb)
+   np.save('kT.npy', kt)
+   np.save('bhmdot.npy', bh)
 
 def compile_training_data():
    import glob
