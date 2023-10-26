@@ -46,35 +46,3 @@ def cutout(bar_path, fields, snap, halo_id):
             h.attrs["NumPart_ThisFile"] = num_parts
             h.attrs["NumFilesPerSnapshot"] = 1
             f.close()
-
-def make_proj(filename, snapnum, halonum, dm=True, gas=True, ns=["x","y","z"], suffix=''):
-   ds = yt.load(filename)
-   try:
-      _, c = ds.find_min(("PartType5","Potential"))
-   except:
-      c = 'c'
-   for n in ns:
-      if gas:
-         if not glob.glob('gas_sb_proj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix)):
-            xray_fields = yt.add_xray_emissivity_field(ds, 0.3, 7, table_type='apec', metallicity=0.3)
-            p = yt.FITSProjection(ds, n, ("gas","xray_photon_emissivity_0.3_7_keV"), center=c, width=(8, "Mpc"))
-            p.writeto('gas_sb_proj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix), overwrite=True)
-            del(p)
-            gc.collect()
-         if not glob.glob('gas_kT_proj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix)):
-            p = yt.FITSProjection(ds, n, ("gas","kT"), center=c, width=(8, "Mpc"), weight_field="mazzotta_weighting")
-            p.writeto('gas_kT_proj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix), overwrite=True)
-            del(p)
-            gc.collect()
-         if not glob.glob('bh_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix)):
-            p = yt.FITSParticleProjection(ds, n, ('PartType5', 'BH_Mdot'), center=c, width=(8, "Mpc"), deposition="cic")
-            p.writeto('bh_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix), overwrite=True)
-            del(p)
-            gc.collect()
-      if dm:
-         if not glob.glob('dm_massproj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix)):
-            p = yt.FITSParticleProjection(ds, n, ("PartType1","particle_mass"), center=c, width=(8, "Mpc"), deposition="cic")
-            p.writeto('dm_massproj_%s_%s_%s%s.fits' % (snapnum, halonum, n, suffix), overwrite=True)
-            del(p)
-            gc.collect()
-
