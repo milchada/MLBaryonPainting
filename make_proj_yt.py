@@ -6,8 +6,6 @@ import pandas as pd
 import numpy as np
 import yt, pyxsim
 
-basePath = '/n/holylabs/LABS/natarajan_lab/Users/uchadaya/BaryonPasting/TNG-training-data/'
-
 def hot_gas(pfilter, data):
     pfilter1 = data[pfilter.filtered_type, "temperature"] > 3.0e5
     pfilter2 = data["PartType0", "StarFormationRate"] == 0.0
