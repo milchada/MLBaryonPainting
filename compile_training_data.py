@@ -2,6 +2,33 @@ import glob
 import numpy as np
 from astropy.io import fits
 
+matches = np.load('fp_to_dm.npy')
+simname = 'TNG300-1'
+dir = 'highres/'
+
+#if cutouts_via_api:
+os.chdir('/n/holylabs/LABS/natarajan_lab/Users/uchadaya/BaryonPasting/TNG-training-data/cutouts/'+dir)
+for snap in np.unique(matches[:,0]):
+    sub = matches[matches[:,0]==snap]
+    hmax = int(sub[-1, 1])
+    for halo in range(338,339):#hmax):
+        if halo < 10:
+            h = '00'+str(halo)
+        elif halo < 100:
+            h = '0'+str(halo)
+        else:
+            h = str(halo)
+        if not glob.glob('gas_rho_snap%d_halo%s_z.fits' % (snap, h)):
+            print(dir, snap, halo)
+            # try:
+            if not glob.glob('snap%d_halo%d_fp.hdf5' % (snap, halo)):
+                save_halo_cutouts(simname, snap, halo, outname='snap%d_halo%d_fp.hdf5' % (snap, halo))
+            try:
+                yt_xray(snap, halo,'cutouts/'+dir,lx=False,dm=False,rho=True,temp=False)
+            except:
+                print('error')
+            os.remove('snap%d_halo%d_fp.hdf5' % (snap, halo))
+
 def compile_training_data():
    fdm = glob.glob('dm_Mass_*npy'); dm.sort() 
    fgas = [d.replace('dm_Mass','gas_Density') for d in dm]
