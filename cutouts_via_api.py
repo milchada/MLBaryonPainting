@@ -101,7 +101,7 @@ simname = 'TNG300-1'
 dir = 'highres/'
 
 os.chdir('/n/holylabs/LABS/natarajan_lab/Users/uchadaya/BaryonPasting/TNG-training-data/cutouts/'+dir)
-for snap in [99]:#np.unique(matches[:,0])[:3]:
+for snap in np.unique(matches[:,0]):
     sub = matches[matches[:,0]==snap]
     hmax = int(sub[-1, 1])
     for halo in range(338,339):#hmax):
@@ -121,12 +121,3 @@ for snap in [99]:#np.unique(matches[:,0])[:3]:
             except:
                 print('error')
             os.remove('snap%d_halo%d_fp.hdf5' % (snap, halo))
-#            !rm *ewah
-        #if not glob.glob('dm_mass_snap%d_halo%d_z_dm.fits' % (snap, halo)):
-        #    if not glob.glob('snap%d_halo%d_dm.hdf5' % (snap, halo)):
-        #        save_halo_cutouts(simname+'-Dark', snap, halo, outname='snap%d_halo%d_dm.hdf5' % (snap, halo))
-        #    try:
-        #        yt_xray(snap, halo,'cutouts/'+dir,lx=False,temp=False, dm=True,rho=False, type='dm')
-        #    except:
-        #        print('DM error')
-
