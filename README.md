@@ -9,7 +9,7 @@ Trained models: https://www.dropbox.com/sh/29v4js55hc1gais/AAC1U-dW1PRjvjF7Mjofs
 # Generating training images
 
 - First, create a catalog of FoF halos that meet your criteria. Use [make_cluster_catalog.py](make_cluster_catalogs.py).
-- Next, create cutouts of these halos. If you have snapshots of TNG stored locally, use [cutouts_from_fullbox.py](cutouts_from_fullbox.py). Else, use [cutouts_via_api.py]((cutouts_via_api.py). In the latter case, don't forget to first register for an account at https://www.tng-project.org/data/ and modify the "api_key" field in this file with your API key. The default value of 12345 will *not* work.
+- Next, create cutouts of these halos. If you have snapshots of TNG stored locally, use [cutouts_from_fullbox.py](cutouts_from_fullbox.py). Else, use [cutouts_via_api.py](cutouts_via_api.py). In the latter case, don't forget to first register for an account at https://www.tng-project.org/data/ and modify the "api_key" field in this file with your API key. The default value of 12345 will *not* work.
 - Import [make_yt_proj.py](make_yt_proj.py). This contains the `yt_xray` function that will read in your HDF5 snapshots and output FITS images.
 - Run [compile_training_data.py](compile_training_data.py). First, this compiles the FITS images into a single array for each property. Then, it normalises each array two ways. It stores the normalisation parameters so you can revert the operation later.
 
