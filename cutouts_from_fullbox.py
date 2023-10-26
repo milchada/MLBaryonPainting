@@ -5,7 +5,7 @@ import gc
 import pandas as pd
 groupcat = pd.read_csv('groupcat.csv')
 
-# loc = Path("/n/holylfs05/LABS/hernquist_lab/IllustrisTNG/Runs/L205n2500TNG/")
+loc = Path("/n/holylfs05/LABS/hernquist_lab/IllustrisTNG/Runs/L205n2500TNG/")
 # loc = Path("/n/holylfs05/LABS/hernquist_lab/IllustrisTNG/Runs/L205n1250TNG/") #midres
 # loc = Path("/n/holylfs05/LABS/hernquist_lab/IllustrisTNG/Runs/L205n625TNG/") #lowres
 fields = {
@@ -16,7 +16,7 @@ fields = {
     # 4: ["Coordinates", "Velocities", "ParticleIDs", "Masses"]
 }
 base_path = str(loc /"output")
-def cutout(bar_path, fields, snap, halo_id):
+def cutout(base_path, fields, snap, halo_id):
     if 'DM' in loc.name:
         ptypes = [1]
     else:
