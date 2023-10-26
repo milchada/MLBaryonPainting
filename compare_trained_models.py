@@ -1,5 +1,4 @@
 import matplotlib
-# matplotlib.use('Agg')
 import matplotlib.pylab as plt
 from matplotlib import colors, cm
 import os, gc, glob
@@ -17,12 +16,14 @@ def loss(yt, yp): #i want to minimise MSE but also KLD
                                        #or try KLD((yt, yp) + (yp, yt))/2
     return loss
 
-modelnames = glob.glob('mass*model'); modelnames.sort()
+modelnames = glob.glob('mass*h5'); modelnames.sort()
 
-histories = [m.replace('model','history') for m in modelnames]
+histories = [m.replace('h5','history') for m in modelnames]
 
-basePath = '/n/holylabs/LABS/natarajan_lab/Users/uchadaya/BaryonPasting/TNG-training-data/cutouts/highres'
-df = pd.read_csv(basePath.replace('highres','model-normalization.csv'))
+rootDir = '/n/holylabs/LABS/natarajan_lab/Users/uchadaya/BaryonPasting/TNG-training-data/cutouts/'
+basePath = rootDir+'highres/' #modify to point to where your trained models live
+model_norm = rootDir+'model-normalization.csv' #this is the array where you stored the values used to normalise your simulation data to the (0,1) space.
+df = pd.read_csv(model_norm) 
 
 def renorm(arr, arrmin, arrmax, eps=0.1, log=True):
     if log:
@@ -433,11 +434,11 @@ def pred_error():
 from astropy.io import fits 
 from scipy.stats import spearmanr
 
-def err_vs_cluster_props(modelname, prop1 = 'Group_M_Crit200', prop2 = 'GroupBHMass', errtype = 'mse'):
-    #GroupBHMdot, GroupSFR
+def err_vs_cluster_props(modelname, groupcat='groupcat.csv', prop1 = 'Group_M_Crit200', prop2 = 'GroupBHMass', errtype = 'mse'):
+    #can also try properties like GroupBHMdot, GroupSFR, as long as you collected them in the groupcat file
     norm = modelname.split('loss_')[1].split('-norm')[0]
-    cat = pd.read_csv('groupcat-fp.csv')
-    df = pd.read_csv('../model-normalization.csv')
+    cat = pd.read_csv(groupcat)
+    df = pd.read_csv(model_norm)
     X = np.zeros((len(cat)*3, 512, 512))
     x = np.zeros(len(X))
     y = np.zeros(len(X))
@@ -483,7 +484,6 @@ def err_vs_cluster_props(modelname, prop1 = 'Group_M_Crit200', prop2 = 'GroupBHM
     err = mse(ytrue, ypred)
 
     #groupcat must include only the test set
-    #i guess it could also include validation set? Ask Michelle
     abserr = abserr [x>0]
     y = y [x>0]
     x = x [x>0]
@@ -524,7 +524,6 @@ def mape(yt, yp):
     return err#len(tsum)
 
 def plot_errors(modelnames):
-    # fig, ax = plt.subplots(nrows = 2, ncols = 2, sharex=False, sharey=False)
     for modelname in modelnames:
         norm = modelname.split('loss_')[1].split('-norm')[0]
         prop = modelname.split('_in_')[1].split('_out')[0]
@@ -538,13 +537,6 @@ def plot_errors(modelnames):
             ymin, ymax = tmin, tmax
         X_test, y_test, y_pred = extract_model(modelname)
         y_pred = y_pred[:,:,:,0]
-        # err_mse = mse(y_test, y_pred) * 100  #to %
-        # err_mpe = mpe(y_test, y_pred) * 100
-        # err_mape = mape(y_test, y_pred) * 100
-        # for err in [err_mpe, err_mape]:
-        #     err[np.isinf(err)] = np.nan
-        # ax[0][0].hist(err_mpe, bins=100, histtype='step', label=prop)
-        # ax[0][1].hist(err_mape, bins=100, histtype='step', label=prop)
         if 'nolog' in modelname:
             ymin = 10**ymin
             ymax = 10**ymax
@@ -558,9 +550,7 @@ def plot_errors(modelnames):
             err[np.isinf(err)] = np.nan
             emax = np.nanpercentile(err, 90)
             err[err > emax] = emax
-        # ax[1][0].hist(err_mpe, bins=100, histtype='step')
-        # ax[1][1].hist(err_mape, bins=100,  histtype='step')
-        # print(modelname, 'mean MSE: ', np.nanmean(err_mse), 'median MSE: ',np.nanmedian(err_mse))
+        
         print(modelname, 'mean MPE: ', np.nanmean(err_mpe), 'median MPE: ',np.nanmedian(err_mpe))
         print(modelname, 'mean MAPE: ', np.nanmean(err_mape), 'median MAPE: ',np.nanmedian(err_mape))
 
