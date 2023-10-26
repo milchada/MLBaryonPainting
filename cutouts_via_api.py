@@ -3,7 +3,7 @@ import numpy as np
 import requests, yt, gc, glob, os 
 
 baseUrl = 'http://www.tng-project.org/api/'
-headers = {"api-key":"5e8664e232c2b2ba3fe7a37b7977f31e"}
+headers = {"api-key":"12345"}
 
 def get(path, params=None):
     # make HTTP GET request to path
